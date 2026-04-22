@@ -1,0 +1,63 @@
+# Vercel Speed Insights Installation Report
+
+## Summary
+Successfully installed and configured Vercel Speed Insights for the FinAI Next.js project following the latest official Vercel documentation.
+
+## Changes Made
+
+### 1. Package Installation
+- **File**: `package.json`
+- **Change**: Added `@vercel/speed-insights` version `^2.0.0` to dependencies
+- **Method**: Installed via `npm install @vercel/speed-insights`
+
+### 2. Component Integration
+- **File**: `src/app/layout.jsx`
+- **Changes**:
+  - Added import: `import { SpeedInsights } from "@vercel/speed-insights/next";`
+  - Added `<SpeedInsights />` component inside the `<body>` tag, after all context providers
+  
+### 3. Lock File Updated
+- **File**: `package-lock.json`
+- **Change**: Updated with new dependencies for @vercel/speed-insights (407 packages added)
+
+## Implementation Details
+
+The SpeedInsights component was added to the root layout file (`src/app/layout.jsx`), which is the appropriate location for Next.js App Router applications. The component is placed at the end of the body element, after all the application's context providers (ThemeProvider, CurrencyProvider, and AuthProvider), following the recommended pattern from the official Vercel documentation.
+
+This placement ensures that Speed Insights will:
+- Track page performance metrics across the entire application
+- Work seamlessly with the existing React context structure
+- Not interfere with the application's rendering logic
+
+## Verification Steps Completed
+
+1. ✅ Fetched latest documentation from https://vercel.com/docs/speed-insights/quickstart
+2. ✅ Installed @vercel/speed-insights package using npm
+3. ✅ Updated package.json with new dependency
+4. ✅ Added SpeedInsights component to root layout
+5. ✅ Successfully built the project (`npm run build`) - no errors
+6. ✅ Verified all static pages compiled correctly (11/11 pages)
+
+## Next Steps
+
+To complete the setup, the following steps should be done after this PR is merged:
+
+1. **Enable Speed Insights in Vercel Dashboard**:
+   - Navigate to your project settings on Vercel
+   - Go to the Speed Insights section
+   - Click the "Enable" button
+
+2. **Deploy to Vercel**:
+   - The changes will be deployed automatically when merged to main
+   - Or manually deploy using `vercel deploy`
+
+3. **View Metrics**:
+   - After deployment and user visits, performance data will be available in the Speed Insights dashboard
+
+## Notes
+
+- The project uses Next.js 16.2.4 with App Router
+- Package manager: npm (based on package-lock.json presence)
+- The integration follows the official Next.js App Router pattern
+- No existing functionality was affected - only additive changes were made
+- Pre-existing linter configuration issue detected (unrelated to these changes)

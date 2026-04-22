@@ -2,6 +2,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { CurrencyProvider } from "@/context/CurrencyContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata = {
   title: "FinAI",
@@ -17,6 +18,7 @@ export default function RootLayout({ children }) {
             <AuthProvider>{children}</AuthProvider>
           </CurrencyProvider>
         </ThemeProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
