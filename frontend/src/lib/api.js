@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
+  // Use the frontend origin as a proxy target so browser requests avoid Render CORS checks.
+  baseURL: "/api",
 });
 
 export const setAuthToken = (token) => {

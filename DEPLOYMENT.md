@@ -33,10 +33,11 @@ Add these environment variables:
 DB_URL=mongodb+srv://username:password@cluster.mongodb.net/finance-app
 JWT_SECRET=replace-with-a-long-random-secret
 CLIENT_URL=https://your-frontend-app.vercel.app
+CLIENT_URLS=https://your-frontend-app.vercel.app,https://your-preview-app.vercel.app
 ```
 
 ## Notes
 
-- The frontend calls the backend directly through `NEXT_PUBLIC_API_URL`.
-- The backend uses `CLIENT_URL` for CORS, so set it to the deployed Vercel URL or your final custom domain.
+- The frontend proxies browser requests through `/api`, then forwards them to `NEXT_PUBLIC_API_URL`. This avoids browser-side CORS issues with Render.
+- The backend still uses `CLIENT_URL` and optional `CLIENT_URLS` for direct access, so set them to your deployed Vercel URL(s) or final custom domain.
 - The Python file in `backend/ml` is not part of the live API path, so the backend can stay a standard Node service on Render.
