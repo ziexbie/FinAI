@@ -8,10 +8,24 @@ const financeRoutes = require("./routes/financeRoutes");
 
 const app = express();
 const port = process.env.PORT || 5000;
+const allowedOrigins = new Set(
+  [
+    process.env.CLIENT_URL,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ].filter(Boolean)
+);
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: (origin, callback) => {
+      // Allow local development and the deployed frontend while keeping other origins blocked.
+      if (!origin || allowedOrigins.has(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("CORS origin not allowed."));
+    },
     credentials: true,
   })
 );

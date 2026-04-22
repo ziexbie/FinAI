@@ -2,6 +2,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { CurrencyProvider } from "@/context/CurrencyContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 export const metadata = {
@@ -18,6 +19,7 @@ export default function RootLayout({ children }) {
             <AuthProvider>{children}</AuthProvider>
           </CurrencyProvider>
         </ThemeProvider>
+        <Analytics />
         <SpeedInsights />
       </body>
     </html>
