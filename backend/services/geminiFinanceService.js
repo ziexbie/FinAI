@@ -5,6 +5,7 @@ const { calculateRiskScore } = require("./riskService");
 const DEFAULT_MODEL = "gemini-2.5-flash";
 const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const REQUEST_TIMEOUT_MS = 20000;
+const MAX_OUTPUT_TOKENS = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 4096);
 
 const insightSchema = {
   type: "OBJECT",
@@ -172,10 +173,12 @@ const parseGeminiJson = (text) => {
     }
 
     if (endIdx === -1) {
-      throw new Error(
+      const incompleteJsonError = new Error(
         `Incomplete JSON object in Gemini response (unmatched braces).\n` +
         `Response preview: ${text.substring(0, 150)}`
       );
+      incompleteJsonError.code = "INCOMPLETE_GEMINI_JSON";
+      throw incompleteJsonError;
     }
 
     const jsonStr = text.substring(startIdx, endIdx);
@@ -190,7 +193,7 @@ const parseGeminiJson = (text) => {
   }
 };
 
-const buildPrompt = ({ record, risk, prediction, recommendations }) => `
+const buildPrompt = ({ record, risk, prediction, recommendations, compact = false }) => `
 You are FinAI, an AI financial risk coach for a college final year project.
 Analyze the selected finance record and produce concise, presentation-friendly guidance.
 
@@ -200,28 +203,49 @@ Rules:
 - Keep the tone practical and confident.
 - Make action items specific to the user's numbers.
 - Use high, medium, or low for every action priority.
+- Return short JSON values only. No markdown.
+- Keep executiveSummary, riskNarrative, outlook, and presentationNote under 35 words each.
+- Return exactly 3 actionPlan items, each explanation under 20 words.
 
 Selected financial data:
 ${JSON.stringify(sanitizeRecord(record), null, 2)}
 
 Computed risk engine output:
-${JSON.stringify(risk, null, 2)}
+${JSON.stringify(compact ? {
+  score: risk.score,
+  healthScore: risk.healthScore,
+  label: risk.label,
+  explanation: risk.explanation,
+  metrics: risk.metrics,
+} : risk, null, 2)}
 
 Prediction engine output:
-${JSON.stringify(prediction, null, 2)}
+${JSON.stringify(compact ? {
+  nextPeriod: prediction.nextPeriod,
+  predictedExpenses: prediction.predictedExpenses,
+  predictedSavings: prediction.predictedSavings,
+  predictedIncome: prediction.predictedIncome,
+  budgetShortfall: prediction.budgetShortfall,
+  shortfallAmount: prediction.shortfallAmount,
+  trendDirection: prediction.trendDirection,
+  method: prediction.method,
+  confidence: prediction.confidence,
+  explanation: prediction.explanation,
+} : prediction, null, 2)}
 
 Baseline recommendation candidates:
 ${JSON.stringify(recommendations, null, 2)}
 `;
 
-const callGemini = async ({ record, risk, prediction, recommendations }) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
-
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured in the backend environment.");
-  }
-
+const requestGeminiGeneration = async ({
+  record,
+  risk,
+  prediction,
+  recommendations,
+  model,
+  compact,
+  maxOutputTokens,
+}) => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -230,19 +254,19 @@ const callGemini = async ({ record, risk, prediction, recommendations }) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
+        "x-goog-api-key": process.env.GEMINI_API_KEY,
       },
       signal: controller.signal,
       body: JSON.stringify({
         contents: [
           {
             role: "user",
-            parts: [{ text: buildPrompt({ record, risk, prediction, recommendations }) }],
+            parts: [{ text: buildPrompt({ record, risk, prediction, recommendations, compact }) }],
           },
         ],
         generationConfig: {
-          temperature: 0.35,
-          maxOutputTokens: 1500,
+          temperature: 0.25,
+          maxOutputTokens,
           responseMimeType: "application/json",
           responseSchema: insightSchema,
         },
@@ -259,29 +283,90 @@ const callGemini = async ({ record, risk, prediction, recommendations }) => {
       console.error("Gemini API Error:", {
         status: response.status,
         error: errorMsg,
-        fullResponse: JSON.stringify(responseBody).substring(0, 500)
+        fullResponse: JSON.stringify(responseBody).substring(0, 500),
       });
       throw new Error(`Gemini API Error: ${errorMsg}`);
     }
 
+    const finishReason = responseBody.candidates?.[0]?.finishReason;
     const extractedText = extractText(responseBody);
+
     if (!extractedText) {
       console.error("No text extracted from Gemini response:", JSON.stringify(responseBody).substring(0, 300));
       throw new Error("Gemini returned a response but no text content was found");
     }
 
-    return {
-      payload: parseGeminiJson(extractedText),
-      model,
-    };
+    try {
+      return parseGeminiJson(extractedText);
+    } catch (parseError) {
+      if (finishReason === "MAX_TOKENS") {
+        parseError.code = "INCOMPLETE_GEMINI_JSON";
+      }
+
+      throw parseError;
+    }
   } catch (error) {
     if (error.name === "AbortError") {
       throw new Error(`Gemini API request timed out after ${REQUEST_TIMEOUT_MS}ms`);
     }
+
     throw error;
   } finally {
     clearTimeout(timeout);
   }
+};
+
+const callGemini = async ({ record, risk, prediction, recommendations }) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
+
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured in the backend environment.");
+  }
+
+  const attempts = [
+    { compact: false, maxOutputTokens: MAX_OUTPUT_TOKENS },
+    { compact: true, maxOutputTokens: MAX_OUTPUT_TOKENS },
+  ];
+  let lastError = null;
+
+  for (let index = 0; index < attempts.length; index++) {
+    const attempt = attempts[index];
+
+    try {
+      const payload = await requestGeminiGeneration({
+        record,
+        risk,
+        prediction,
+        recommendations,
+        model,
+        compact: attempt.compact,
+        maxOutputTokens: attempt.maxOutputTokens,
+      });
+
+      return { payload, model };
+    } catch (error) {
+      lastError = error;
+
+      if (error.code !== "INCOMPLETE_GEMINI_JSON") {
+        throw error;
+      }
+
+      if (index < attempts.length - 1) {
+        console.warn("Gemini returned incomplete JSON. Retrying with compact prompt.");
+      }
+    }
+  }
+
+  throw lastError;
+};
+
+const getUserFacingGeminiError = (error) => {
+  if (error.code === "INCOMPLETE_GEMINI_JSON") {
+    return "Gemini returned a partial response, so FinAI used the local fallback insights for this refresh.";
+  }
+
+  return error.message;
 };
 
 const generateFinancialInsights = async ({ record, records = [] }) => {
@@ -312,7 +397,7 @@ const generateFinancialInsights = async ({ record, records = [] }) => {
       risk,
       prediction,
       recommendations,
-      reason: error.message,
+      reason: getUserFacingGeminiError(error),
     });
   }
 };
