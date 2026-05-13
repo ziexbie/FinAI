@@ -93,15 +93,15 @@ const normalizeInsightPayload = (payload, fallbackRecommendations) => ({
     .map((item) =>
       typeof item === "string"
         ? {
-            title: item,
-            explanation: "Generated from the current financial risk profile.",
-            priority: "medium",
-          }
+          title: item,
+          explanation: "Generated from the current financial risk profile.",
+          priority: "medium",
+        }
         : {
-            title: item.title || "Review financial plan",
-            explanation: item.explanation || "Use this as a practical next step for the selected period.",
-            priority: normalizePriority(item.priority),
-          }
+          title: item.title || "Review financial plan",
+          explanation: item.explanation || "Use this as a practical next step for the selected period.",
+          priority: normalizePriority(item.priority),
+        }
     ),
   presentationNote:
     payload?.presentationNote ||
@@ -129,27 +129,64 @@ const buildFallbackInsights = ({ record, risk, prediction, recommendations, reas
   ),
 });
 
-const extractText = (responseBody = {}) =>
-  (responseBody.candidates?.[0]?.content?.parts || [])
-    .map((part) => part.text || "")
-    .join("")
-    .trim();
+const extractText = (responseBody = {}) => {
+  const parts = responseBody.candidates?.[0]?.content?.parts || [];
+
+  // Gemini schema responses return JSON directly in the text field
+  if (parts.length > 0 && parts[0].text) {
+    return parts[0].text.trim();
+  }
+
+  return "";
+};
 
 const parseGeminiJson = (text) => {
   if (!text) {
-    throw new Error("Gemini returned an empty response.");
+    throw new Error("Gemini returned an empty response. Check if your API key is valid.");
   }
 
+  // First, try direct parsing (for schema responses)
   try {
     return JSON.parse(text);
-  } catch (error) {
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-
-    if (!jsonMatch) {
-      throw error;
+  } catch (directError) {
+    // If direct parse fails, try to extract JSON
+    // Use a more conservative approach: find first { and match braces properly
+    const startIdx = text.indexOf("{");
+    if (startIdx === -1) {
+      throw new Error(
+        `No JSON object found in Gemini response.\n` +
+        `Response preview: ${text.substring(0, 150)}`
+      );
     }
 
-    return JSON.parse(jsonMatch[0]);
+    // Find the matching closing brace
+    let braceCount = 0;
+    let endIdx = -1;
+    for (let i = startIdx; i < text.length; i++) {
+      if (text[i] === "{") braceCount++;
+      if (text[i] === "}") braceCount--;
+      if (braceCount === 0) {
+        endIdx = i + 1;
+        break;
+      }
+    }
+
+    if (endIdx === -1) {
+      throw new Error(
+        `Incomplete JSON object in Gemini response (unmatched braces).\n` +
+        `Response preview: ${text.substring(0, 150)}`
+      );
+    }
+
+    const jsonStr = text.substring(startIdx, endIdx);
+    try {
+      return JSON.parse(jsonStr);
+    } catch (extractError) {
+      throw new Error(
+        `Failed to parse extracted JSON: ${extractError.message}\n` +
+        `Extracted JSON: ${jsonStr.substring(0, 150)}`
+      );
+    }
   }
 };
 
@@ -182,7 +219,7 @@ const callGemini = async ({ record, risk, prediction, recommendations }) => {
   const model = process.env.GEMINI_MODEL || DEFAULT_MODEL;
 
   if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not configured.");
+    throw new Error("GEMINI_API_KEY is not configured in the backend environment.");
   }
 
   const controller = new AbortController();
@@ -205,24 +242,43 @@ const callGemini = async ({ record, risk, prediction, recommendations }) => {
         ],
         generationConfig: {
           temperature: 0.35,
-          maxOutputTokens: 1000,
+          maxOutputTokens: 1500,
           responseMimeType: "application/json",
           responseSchema: insightSchema,
         },
       }),
     });
 
-    const responseBody = await response.json().catch(() => ({}));
+    const responseBody = await response.json().catch((parseErr) => {
+      console.error("Failed to parse Gemini response as JSON:", parseErr);
+      return { error: { message: "Invalid JSON response from Gemini API" } };
+    });
 
     if (!response.ok) {
-      const message = responseBody.error?.message || `Gemini API request failed with status ${response.status}.`;
-      throw new Error(message);
+      const errorMsg = responseBody.error?.message || `Gemini API request failed with status ${response.status}.`;
+      console.error("Gemini API Error:", {
+        status: response.status,
+        error: errorMsg,
+        fullResponse: JSON.stringify(responseBody).substring(0, 500)
+      });
+      throw new Error(`Gemini API Error: ${errorMsg}`);
+    }
+
+    const extractedText = extractText(responseBody);
+    if (!extractedText) {
+      console.error("No text extracted from Gemini response:", JSON.stringify(responseBody).substring(0, 300));
+      throw new Error("Gemini returned a response but no text content was found");
     }
 
     return {
-      payload: parseGeminiJson(extractText(responseBody)),
+      payload: parseGeminiJson(extractedText),
       model,
     };
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error(`Gemini API request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
