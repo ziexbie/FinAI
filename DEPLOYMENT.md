@@ -32,6 +32,8 @@ Add these environment variables:
 ```env
 DB_URL=mongodb+srv://username:password@cluster.mongodb.net/finance-app
 JWT_SECRET=replace-with-a-long-random-secret
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-2.5-flash
 CLIENT_URL=https://your-frontend-app.vercel.app
 CLIENT_URLS=https://your-frontend-app.vercel.app,https://your-preview-app.vercel.app
 ```
@@ -40,4 +42,5 @@ CLIENT_URLS=https://your-frontend-app.vercel.app,https://your-preview-app.vercel
 
 - The frontend proxies browser requests through `/api`, then forwards them to `NEXT_PUBLIC_API_URL`. This avoids browser-side CORS issues with Render.
 - The backend still uses `CLIENT_URL` and optional `CLIENT_URLS` for direct access, so set them to your deployed Vercel URL(s) or final custom domain.
+- Gemini runs only on the backend. Never add `GEMINI_API_KEY` to the frontend or expose it with a `NEXT_PUBLIC_` prefix.
 - The Python file in `backend/ml` is not part of the live API path, so the backend can stay a standard Node service on Render.

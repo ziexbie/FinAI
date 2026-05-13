@@ -1354,6 +1354,11 @@ img {
   color: var(--success);
 }
 
+.warning-banner {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
 .primary-button,
 .secondary-button {
   cursor: pointer;
@@ -1853,6 +1858,10 @@ img {
 
 .prediction-card-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ai-summary-grid {
+  margin-bottom: 18px;
 }
 
 .forecast-meta {

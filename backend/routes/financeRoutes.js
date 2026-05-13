@@ -8,6 +8,7 @@ const {
   getFinancialAnalytics,
   getFinancialPredictions,
   getFinancialRecommendations,
+  getAiFinancialInsights,
   calculateRiskScoreFromPayload,
   analyzeFinance,
 } = require("../controllers/financeController");
@@ -36,6 +37,7 @@ router.post("/upload-csv", protect, uploadCsvFile, uploadTransactionsCsv);
 router.post("/analyze", protect, analyzeFinance);
 router.post("/risk-score", protect, calculateRiskScoreFromPayload);
 router.get("/analytics/:id", protect, getFinancialAnalytics);
+router.get("/ai-insights/:id", protect, getAiFinancialInsights);
 router.get("/history/:id", protect, getFinancialDataByUser);
 router.get("/predictions/:id", protect, getFinancialPredictions);
 router.get("/recommendations/:id", protect, getFinancialRecommendations);

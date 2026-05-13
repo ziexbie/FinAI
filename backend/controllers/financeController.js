@@ -4,6 +4,7 @@ const { parseTransactionsCsv, summarizeTransactions } = require("../utils/parseT
 const { buildPrediction } = require("../services/predictionService");
 const { buildRecommendations } = require("../services/recommendationService");
 const { calculateRiskScore, toNumber } = require("../services/riskService");
+const { generateFinancialInsights } = require("../services/geminiFinanceService");
 
 const isSameUser = (requestedUserId, authenticatedUserId) =>
   String(requestedUserId) === String(authenticatedUserId);
@@ -355,6 +356,33 @@ const getFinancialRecommendations = async (req, res) => {
   }
 };
 
+const getAiFinancialInsights = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { periodType, year, month } = req.query;
+
+    if (!isSameUser(id, req.user.userId)) {
+      return res.status(403).json({ message: "You can only generate AI insights for your own financial data." });
+    }
+
+    const records = await FinancialData.find({ userId: id }).sort({
+      year: -1,
+      month: -1,
+      createdAt: -1,
+    });
+    const selectedRecord = findSelectedRecord(records, { periodType, year, month });
+    const aiInsights = await generateFinancialInsights({ record: selectedRecord, records });
+
+    return res.status(200).json({
+      selectedRecord,
+      aiInsights,
+    });
+  } catch (error) {
+    console.error("Get AI financial insights error:", error);
+    return res.status(500).json({ message: "Unable to generate AI financial insights right now." });
+  }
+};
+
 const calculateRiskScoreFromPayload = async (req, res) => {
   try {
     return res.status(200).json({ riskScore: calculateRiskScore(req.body) });
@@ -393,6 +421,7 @@ module.exports = {
   getFinancialAnalytics,
   getFinancialPredictions,
   getFinancialRecommendations,
+  getAiFinancialInsights,
   calculateRiskScoreFromPayload,
   analyzeFinance,
 };

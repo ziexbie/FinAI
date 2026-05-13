@@ -22,6 +22,7 @@ import RiskScoreCard from "@/components/dashboard/RiskScoreCard";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { useAuth } from "@/context/AuthContext";
 import { useCurrency } from "@/context/CurrencyContext";
+import { useAiFinancialInsights } from "@/hooks/useAiFinancialInsights";
 import { useFinancialAnalytics } from "@/hooks/useFinancialAnalytics";
 import api from "@/lib/api";
 import { MONTH_OPTIONS } from "@/lib/financeConfig";
@@ -72,6 +73,17 @@ export default function DashboardOverview() {
     periodType,
     year: selectedYear,
     month: selectedMonth,
+  });
+  const {
+    aiInsights,
+    loading: aiInsightsLoading,
+    error: aiInsightsError,
+  } = useAiFinancialInsights({
+    userId: user?.id,
+    periodType,
+    year: selectedYear,
+    month: selectedMonth,
+    enabled: Boolean(financeRecord),
   });
 
   useEffect(() => {
@@ -325,7 +337,12 @@ export default function DashboardOverview() {
             ) : (
               <>
                 <section className="panel-grid">
-                  <AiInsightsSection recommendations={recommendations} />
+                  <AiInsightsSection
+                    aiInsights={aiInsights}
+                    error={aiInsightsError}
+                    loading={aiInsightsLoading}
+                    recommendations={recommendations}
+                  />
 
                   <article className="panel">
                     <div className="panel-header">
